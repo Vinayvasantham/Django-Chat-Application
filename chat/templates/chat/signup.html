@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign Up</title>
+</head>
+<h1>Sign Up</h1>
+<form method="post" class="form-container">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="form-buttons">
+        <!-- Sign Up Button -->
+        <button type="submit">Sign Up</button>
+        <!-- Login Button (Redirect to /login) -->
+        <a href="/login">
+            <button type="button">Login</button>
+        </a>
+    </div>
+</form>
+</html>

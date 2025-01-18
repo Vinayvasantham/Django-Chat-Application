@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <style>
+        .user-list {
+            width: 250px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-right: 20px;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .chat-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .chat-box {
+            flex: 1;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .message {
+            margin-bottom: 10px;
+        }
+
+        .message.sent {
+            text-align: right;
+        }
+
+        .message.received {
+            text-align: left;
+        }
+
+        textarea {
+            width: 100%;
+            resize: none;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    {% csrf_token %}
+    <script>
+        // Define currentUser from Django template context
+        const currentUser = "{{ request.user.username }}";
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // WebSocket connection handling
+        let chatSocket = null;
+
+        function startChat(userId, chatUsername) {
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML = `
+                <h3>Chat with ${chatUsername}</h3>
+                <div class="messages" id="messages"></div>
+                <textarea id="message-input" rows="3" placeholder="Type your message..."></textarea>
+                <button id="send-button">Send</button>
+            `;
+        
+            if (chatSocket) {
+                chatSocket.close(); // Close previous connection
+            }
+        
+            chatSocket = new WebSocket(`ws://${window.location.host}/ws/chat/${userId}/`);
+        
+            chatSocket.onopen = function() {
+                console.log('WebSocket connected!');
+                chatSocket.send(JSON.stringify({
+                    type: 'load_previous_messages',
+                    receiver: userId
+                }));
+            };
+        
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                // Handle different message types
+                switch (data.type) {
+                    case 'previous_messages':
+                        const messagesDiv = document.getElementById('messages');
+                        messagesDiv.innerHTML = '';
+                        data.messages.forEach(message => {
+                            const className = message.sender === currentUser ? 'sent' : 'received';
+                            addMessage(message.content, className);
+                        });
+                        break;
+                    case 'chat_message':
+                        addMessage(data.message, data.sender === currentUser ? 'sent' : 'received');
+                        break;
+                    case 'error':
+                        alert(data.message); // Display error messages from server
+                        break;
+                    default:
+                        console.warn('Unknown message type:', data.type);
+                }
+            };
+        
+            chatSocket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        
+            chatSocket.onclose = function() {
+                console.log('WebSocket connection closed');
+            };
+
+            // Attach event listener to the send button
+            document.getElementById('send-button').onclick = function() {
+                sendMessage(userId);
+            };
+        
+            document.getElementById('message-input').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    sendMessage(userId);
+                }
+            });
+        
+        }
+        
+
+        function loadPreviousMessages(selectedUserId) {
+            socket.send(JSON.stringify({
+                type: 'load_previous_messages',
+                receiver: selectedUserId
+            }));
+        }
+
+
+        function loadChatHistory(userId) {
+            fetch(`/chat/messages/${userId}/`, {
+                headers: {
+                    'X-CSRFToken': csrftoken
+                }
+            })
+            .then(response => response.json())
+            .then(messages => {
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                messages.forEach(message => {
+                    const className = message.sender === currentUser ? 'sent' : 'received';
+                    addMessage(message.content, className);
+                });
+            })
+            .catch(error => console.error('Error loading messages:', error));
+        }
+
+        function addMessage(content, className) {
+            const messages = document.getElementById('messages');
+            messages.insertAdjacentHTML('beforeend', 
+                `<div class="message ${className}"><p>${content}</p></div>`
+            );
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function sendMessage(userId) {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            if (message && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                chatSocket.send(JSON.stringify({
+                    type: 'chat_message', // Added type field
+                    message: message,
+                    receiver: userId,
+                    sender: currentUser
+                }));
+                addMessage(message, "sent");
+                input.value = '';
+            } else {
+                console.error('WebSocket is not open or message is empty.');
+            }
+        }
+
+        function logoutUser() {
+            fetch('/logout/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                }
+            }).then(() => {
+                window.location.href = '/login/';
+            });
+        }
+    </script>
+
+    <h2>Welcome, {{ request.user.username }}</h2>
+    <button onclick="logoutUser()">Logout</button>
+
+    <div class="chat-container">
+        <div class="user-list" id="user-list">
+            <h3>Users</h3>
+            <ul>
+                {% for user in users %}
+                    {% if user != request.user %}
+                        <li>
+                            <a href="#" onclick="startChat({{ user.id }}, '{{ user.username }}')">
+                                {{ user.username }}
+                            </a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="chat-box" id="chat-box">
+            <h3>Chat</h3>
+            <p>Select a user to start chatting.</p>
+        </div>
+    </div>
+    <script>
+        document.getElementById('user-list').addEventListener('click', (event) => {
+            const selectedUserId = event.target.dataset.userId; // Assume user ID is stored in data-user-id
+            loadPreviousMessages(selectedUserId);
+        });
+    </script>
+
+</body>
+</html>

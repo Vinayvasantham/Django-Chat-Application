@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome</title>
+</head>
+<body>
+    <h2>Welcome to Chat App</h2>
+    <div>
+        <a href="{% url 'chat:login' %}">
+            <button>Login</button>
+        </a>
+        <a href="{% url 'chat:sign_up' %}">
+            <button>Signup</button>
+        </a>
+    </div>
+</body>
+</html>
